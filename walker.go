@@ -18,26 +18,42 @@ type SetValueFuncString func(value string) error
 type StructWalkerHandler func(structVal any, fieldName string,
 	fieldValue any, set SetValueFunc) error
 
-// Function type for handling slice traversal.
+// Function type for handling slice traversal. The handler will be called for
+// each element in the slice. Use the set() function to modify the value in
+// the slice if so desired.
 type SliceWalkerHandler func(sliceVal any, index int, elementValue any,
 	set SetValueFunc) error
 
-// Function type for handling map traversal.
+// Function type for handling map traversal. The handler will be called for each
+// key-value pair in the map. Use the set() function to modify the value in
+// the map if so desired.
 type MapWalkerHandler func(mapVal any, key any, value any,
 	set SetValueFunc) error
 
 // Function type for handling struct traversal with string values. The handler
-// will not be called if the field value is not a string.
+// will be called for each field in the struct whose value is a string. Use the
+// set() function to modify the value in the struct if so desired. As a special
+// case, if the field value is a pointer to a string, the handler will be
+// called with the dereferenced string value, and the set() function will
+// modify the value in the struct by setting the pointer to a new string value.
 type StructWalkerHandlerString func(structVal any, fieldName string,
 	fieldValue string, set SetValueFuncString) error
 
 // Function type for handling slice traversal with string values. The handler
-// will not be called if the element value is not a string.
+// will be called for each element in the slice whose value is a string. Use the
+// set() function to modify the value in the slice if so desired. As a special
+// case, if the slice element is a pointer to a string, the handler will be
+// called with the dereferenced string value, and the set() function will
+// modify the value in the slice by setting the pointer to a new string value.
 type SliceWalkerHandlerString func(sliceVal any, index int,
 	elementValue string, set SetValueFuncString) error
 
 // Function type for handling map traversal with string values. The handler will
-// not be called if the value is not a string.
+// be called for each key-value pair in the map whose value is a string. Use the
+// set() function to modify the value in the map if so desired. As a special
+// case, if the map value is a pointer to a string, the handler will be
+// called with the dereferenced string value, and the set() function will
+// modify the value in the map by setting the pointer to a new string value.
 type MapWalkerHandlerString func(mapVal any, key any, value string,
 	set SetValueFuncString) error
 
@@ -231,9 +247,12 @@ func (w *Walker) getPtrList(
 	ptrs = make([]reflect.Value, 0, ptrCount)
 
 	val := dereferenced
-	for range ptrCount {
+	for i := range ptrCount {
 		newVal := reflect.New(val.Type())
 		ptrs = append(ptrs, newVal)
+		if i > 0 {
+			newVal.Elem().Set(val)
+		}
 		val = newVal
 	}
 
