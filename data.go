@@ -66,7 +66,9 @@ func (w *Walker) WithStructHandler(handler StructWalkerHandler) *Walker {
 // Sets the handler for struct traversal with string values and returns the
 // Walker instance. The handler will not be called if the field value is not a
 // string.
-func (w *Walker) WithStructHandlerString(handler StructWalkerHandlerString) *Walker {
+func (w *Walker) WithStructHandlerString(
+	handler StructWalkerHandlerString,
+) *Walker {
 	w.structHandlerString = handler
 	return w
 }
@@ -80,7 +82,9 @@ func (w *Walker) WithSliceHandler(handler SliceWalkerHandler) *Walker {
 // Sets the handler for slice traversal with string values and returns the
 // Walker instance. The handler will not be called if the element value is not a
 // string.
-func (w *Walker) WithSliceHandlerString(handler SliceWalkerHandlerString) *Walker {
+func (w *Walker) WithSliceHandlerString(
+	handler SliceWalkerHandlerString,
+) *Walker {
 	w.sliceHandlerString = handler
 	return w
 }
@@ -93,7 +97,9 @@ func (w *Walker) WithMapHandler(handler MapWalkerHandler) *Walker {
 
 // Sets the handler for map traversal with string values and returns the
 // Walker instance. The handler will not be called if the value is not a string.
-func (w *Walker) WithMapHandlerString(handler MapWalkerHandlerString) *Walker {
+func (w *Walker) WithMapHandlerString(
+	handler MapWalkerHandlerString,
+) *Walker {
 	w.mapHandlerString = handler
 	return w
 }
@@ -254,10 +260,7 @@ func (w *Walker) walkMap(value reflect.Value) error {
 
 		if val.Kind() == reflect.String && w.mapHandlerString != nil {
 			setFunc := func(newValue string) error {
-				if !val.CanSet() {
-					return fmt.Errorf("cannot set value for key %v", key)
-				}
-				val.SetString(newValue)
+				value.SetMapIndex(key, reflect.ValueOf(newValue))
 				return nil
 			}
 			err := w.mapHandlerString(value.Interface(), key.Interface(),
@@ -268,10 +271,7 @@ func (w *Walker) walkMap(value reflect.Value) error {
 		} else {
 			if w.mapHandler != nil {
 				setFunc := func(newValue any) error {
-					if !val.CanSet() {
-						return fmt.Errorf("cannot set value for key %v", key)
-					}
-					val.Set(reflect.ValueOf(newValue))
+					value.SetMapIndex(key, reflect.ValueOf(newValue))
 					return nil
 				}
 				if err := w.mapHandler(value.Interface(), key.Interface(),
