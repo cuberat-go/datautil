@@ -110,12 +110,12 @@ func (w *Walker) Walk(data any) error {
 	value := reflect.ValueOf(data)
 	kind := value.Kind()
 
-	if kind != reflect.Ptr {
+	if kind != reflect.Pointer {
 		return fmt.Errorf("data must be a pointer, got %s", kind)
 	}
 
 	// Dereference the pointer until we reach a non-pointer value.
-	for value = value.Elem(); value.Kind() == reflect.Ptr; value = value.Elem() {
+	for value = value.Elem(); value.Kind() == reflect.Pointer; value = value.Elem() {
 	}
 
 	kind = value.Kind()
@@ -132,10 +132,11 @@ func (w *Walker) Walk(data any) error {
 	}
 }
 
+// Determines if the provided value is walkable (i.e., a struct, slice, or map).
 func (w *Walker) isWalkable(value reflect.Value) bool {
-	if value.Kind() == reflect.Ptr {
+	if value.Kind() == reflect.Pointer {
 		// Dereference the pointer until we reach a non-pointer value.
-		for value = value.Elem(); value.Kind() == reflect.Ptr; value = value.Elem() {
+		for value = value.Elem(); value.Kind() == reflect.Pointer; value = value.Elem() {
 		}
 	}
 
@@ -167,18 +168,29 @@ func (w *Walker) walkStruct(value reflect.Value) error {
 			continue
 		}
 
-		if fieldType.Type.Kind() == reflect.String &&
+		dereferenced, ptrs := w.getPtrList(field)
+
+		if dereferenced.Kind() == reflect.String &&
 			w.structHandlerString != nil {
 			setFunc := func(newValue string) error {
-				if !field.CanSet() {
-					return fmt.Errorf("cannot set value for field %s",
-						fieldType.Name)
+				if len(ptrs) > 0 {
+					if !field.CanSet() || !dereferenced.CanSet() {
+						return fmt.Errorf("cannot set value for field %s",
+							fieldType.Name)
+					}
+					field.Set(ptrs[len(ptrs)-1])
+					ptrs[0].Elem().SetString(newValue)
+				} else {
+					if !field.CanSet() {
+						return fmt.Errorf("cannot set value for field %s",
+							fieldType.Name)
+					}
+					field.SetString(newValue)
 				}
-				field.SetString(newValue)
 				return nil
 			}
 			err := w.structHandlerString(value.Interface(), fieldType.Name,
-				field.String(), setFunc)
+				dereferenced.String(), setFunc)
 			if err != nil {
 				return err
 			}
@@ -201,6 +213,33 @@ func (w *Walker) walkStruct(value reflect.Value) error {
 	return nil
 }
 
+func (w *Walker) getPtrList(
+	value reflect.Value,
+) (dereferenced reflect.Value, ptrs []reflect.Value) {
+	if value.Kind() != reflect.Pointer {
+		return value, nil
+	}
+
+	ptrCount := 1
+	// Dereference the pointer until we reach a non-pointer value.
+	for value = value.Elem(); value.Kind() == reflect.Pointer; value = value.Elem() {
+		ptrCount++
+	}
+
+	dereferenced = value
+	// Collect the pointers in reverse order.
+	ptrs = make([]reflect.Value, 0, ptrCount)
+
+	val := dereferenced
+	for range ptrCount {
+		newVal := reflect.New(val.Type())
+		ptrs = append(ptrs, newVal)
+		val = newVal
+	}
+
+	return dereferenced, ptrs
+}
+
 // Traverses a slice or array, invoking the appropriate handlers for each
 // element.
 func (w *Walker) walkSlice(value reflect.Value) error {
@@ -214,15 +253,25 @@ func (w *Walker) walkSlice(value reflect.Value) error {
 			continue
 		}
 
-		if elem.Kind() == reflect.String && w.sliceHandlerString != nil {
+		dereferenced, ptrs := w.getPtrList(elem)
+		if dereferenced.Kind() == reflect.String &&
+			w.sliceHandlerString != nil {
 			setFunc := func(newValue string) error {
-				if !elem.CanSet() {
-					return fmt.Errorf("cannot set value for index %d", i)
+				if len(ptrs) > 0 {
+					if !elem.CanSet() || !dereferenced.CanSet() {
+						return fmt.Errorf("cannot set value for index %d", i)
+					}
+					elem.Set(ptrs[len(ptrs)-1])
+					ptrs[0].Elem().SetString(newValue)
+				} else {
+					if !elem.CanSet() {
+						return fmt.Errorf("cannot set value for index %d", i)
+					}
+					elem.SetString(newValue)
 				}
-				elem.SetString(newValue)
 				return nil
 			}
-			err := w.sliceHandlerString(value.Interface(), i, elem.String(),
+			err := w.sliceHandlerString(value.Interface(), i, dereferenced.String(),
 				setFunc)
 			if err != nil {
 				return err
@@ -258,13 +307,21 @@ func (w *Walker) walkMap(value reflect.Value) error {
 			continue
 		}
 
-		if val.Kind() == reflect.String && w.mapHandlerString != nil {
+		dereferenced, ptrs := w.getPtrList(val)
+
+		if dereferenced.Kind() == reflect.String && w.mapHandlerString != nil {
 			setFunc := func(newValue string) error {
-				value.SetMapIndex(key, reflect.ValueOf(newValue))
+				if len(ptrs) > 0 {
+					value.SetMapIndex(key, ptrs[len(ptrs)-1])
+					ptrs[0].Elem().SetString(newValue)
+				} else {
+					value.SetMapIndex(key, reflect.ValueOf(newValue))
+				}
+
 				return nil
 			}
 			err := w.mapHandlerString(value.Interface(), key.Interface(),
-				val.String(), setFunc)
+				dereferenced.String(), setFunc)
 			if err != nil {
 				return err
 			}
