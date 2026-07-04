@@ -432,3 +432,29 @@ func TestWalkerStringPtrPtr(t *testing.T) {
 		"The struct should have been modified correctly.")
 	t.Logf("Modified struct: %#v\n", struct1)
 }
+
+func ExampleWalker_Walk_trivial() {
+	sliceHandler := func(sliceVal any, index int, elementValue string,
+		set datautil.SetValueFuncString) error {
+		if elementValue == "element3" {
+			// Set a new value for the element in the slice.
+			err := set("element3Mod")
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+	// Create a new Walker instance.
+	walker := datautil.NewWalker().
+		WithSliceHandlerString(sliceHandler)
+	slice := []string{"element1", "element2", "element3"}
+	err := walker.Walk(&slice)
+	if err != nil {
+		fmt.Printf("Error walking slice: %v", err)
+	}
+	fmt.Printf("Modified slice: %+v\n", slice)
+	// Output:
+	// Modified slice: [element1 element2 element3Mod]
+}
