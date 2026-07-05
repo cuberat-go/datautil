@@ -130,8 +130,36 @@ func (w *Walker) Walk(data any) error {
 		return fmt.Errorf("data must be a pointer, got %s", kind)
 	}
 
+	return w.doWalk(value)
+
 	// Dereference the pointer until we reach a non-pointer value.
-	for value = value.Elem(); value.Kind() == reflect.Pointer; value = value.Elem() {
+	// for value = value.Elem(); value.Kind() == reflect.Pointer ||
+	// 	value.Kind() == reflect.Interface; value = value.Elem() {
+	// }
+
+	// kind = value.Kind()
+
+	// switch kind {
+	// case reflect.Struct:
+	// 	return w.walkStruct(value)
+	// case reflect.Slice, reflect.Array:
+	// 	return w.walkSlice(value)
+	// case reflect.Map:
+	// 	return w.walkMap(value)
+	// default:
+	// 	return fmt.Errorf("unsupported data type: %s", kind)
+	// }
+}
+
+func (w *Walker) doWalk(value reflect.Value) error {
+	// value := reflect.ValueOf(data)
+	kind := value.Kind()
+
+	if kind == reflect.Pointer || kind == reflect.Interface {
+		// Dereference the pointer until we reach a non-pointer value.
+		for value = value.Elem(); value.Kind() == reflect.Pointer ||
+			value.Kind() == reflect.Interface; value = value.Elem() {
+		}
 	}
 
 	kind = value.Kind()
@@ -152,7 +180,8 @@ func (w *Walker) Walk(data any) error {
 func (w *Walker) isWalkable(value reflect.Value) bool {
 	if value.Kind() == reflect.Pointer {
 		// Dereference the pointer until we reach a non-pointer value.
-		for value = value.Elem(); value.Kind() == reflect.Pointer; value = value.Elem() {
+		for value = value.Elem(); value.Kind() == reflect.Pointer ||
+			value.Kind() == reflect.Interface; value = value.Elem() {
 		}
 	}
 
@@ -178,7 +207,7 @@ func (w *Walker) walkStruct(value reflect.Value) error {
 		fieldType := typ.Field(i)
 
 		if w.isWalkable(field) {
-			if err := w.Walk(field); err != nil {
+			if err := w.doWalk(field); err != nil {
 				return err
 			}
 			continue
@@ -266,7 +295,7 @@ func (w *Walker) walkSlice(value reflect.Value) error {
 		elem := value.Index(i)
 
 		if w.isWalkable(elem) {
-			if err := w.Walk(elem); err != nil {
+			if err := w.doWalk(elem); err != nil {
 				return err
 			}
 			continue
@@ -320,7 +349,7 @@ func (w *Walker) walkMap(value reflect.Value) error {
 		val := value.MapIndex(key)
 
 		if w.isWalkable(val) {
-			if err := w.Walk(val); err != nil {
+			if err := w.doWalk(val); err != nil {
 				return err
 			}
 			continue

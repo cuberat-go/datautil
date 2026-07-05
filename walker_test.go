@@ -433,6 +433,382 @@ func TestWalkerStringPtrPtr(t *testing.T) {
 	t.Logf("Modified struct: %#v\n", struct1)
 }
 
+// Tests the Walker with handlers that accept string values, but the input data
+// is provided as a pointer to interface{}. This test ensures that the Walker
+// can correctly handle interface{} types and still invoke the appropriate
+// handlers for string values.
+func TestWalkerStringInterface(t *testing.T) {
+	structHandler := func(structVal any, fieldName string, fieldValue string,
+		set datautil.SetValueFuncString) error {
+		if fieldValue == "structValue2" {
+			// Set a new value for the field in the struct.
+			err := set("structValue2Mod")
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Struct field: %s, Value: %s\n", fieldName, fieldValue)
+		return nil
+	}
+
+	sliceHandler := func(sliceVal any, index int, elementValue string,
+		set datautil.SetValueFuncString) error {
+		if elementValue == "element3" {
+			// Set a new value for the element in the slice.
+			err := set("element3Mod")
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Slice index: %d, Value: %s\n", index, elementValue)
+		return nil
+	}
+
+	expectedMap := map[string]string{
+		"key1": "newValue1",
+		"key2": "value2",
+	}
+
+	mapHandlerString := func(mapVal any, key any, value string,
+		set datautil.SetValueFuncString) error {
+		if value == "value1" {
+			// Set a new value for the key in the map.
+			err := set("newValue1")
+			if err != nil {
+				return err
+			}
+		}
+		t.Logf("Map key: %v, Value: %s\n", key, value)
+		return nil
+	}
+
+	// Create a new Walker instance.
+	walker := datautil.NewWalker().
+		WithStructHandlerString(structHandler).
+		WithSliceHandlerString(sliceHandler).
+		WithMapHandlerString(mapHandlerString)
+
+	var map1 any = map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+	}
+
+	err := walker.Walk(&map1)
+	if err != nil {
+		t.Errorf("Error walking map: %v", err)
+	}
+
+	assert.Equal(t, expectedMap, map1,
+		"The map should have been modified correctly.")
+	t.Logf("Modified map: %+v\n", map1)
+
+	var slice1 any = []string{"element1", "element2", "element3"}
+	expectedSlice := []string{"element1", "element2", "element3Mod"}
+	err = walker.Walk(&slice1)
+	if err != nil {
+		t.Errorf("Error walking slice: %v", err)
+	}
+
+	assert.Equal(t, expectedSlice, slice1,
+		"The slice should have been modified correctly.")
+	t.Logf("Modified slice: %+v\n", slice1)
+
+	type myStruct struct {
+		Field1 string
+		Field2 string
+	}
+
+	var expectedStruct any = myStruct{
+		Field1: "structValue1",
+		Field2: "structValue2Mod",
+	}
+
+	struct1 := myStruct{
+		Field1: "structValue1",
+		Field2: "structValue2",
+	}
+
+	err = walker.Walk(&struct1)
+	if err != nil {
+		t.Errorf("Error walking struct: %v", err)
+	}
+
+	assert.Equal(t, expectedStruct, struct1,
+		"The struct should have been modified correctly.")
+	t.Logf("Modified struct: %+v\n", struct1)
+}
+
+func TestWalkerStringRecursive(t *testing.T) {
+	structHandler := func(structVal any, fieldName string, fieldValue string,
+		set datautil.SetValueFuncString) error {
+		if fieldValue == "structValue2" {
+			// Set a new value for the field in the struct.
+			err := set("structValue2Mod")
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Struct field: %s, Value: %s\n", fieldName, fieldValue)
+		return nil
+	}
+
+	sliceHandler := func(sliceVal any, index int, elementValue string,
+		set datautil.SetValueFuncString) error {
+		if elementValue == "element3" {
+			// Set a new value for the element in the slice.
+			err := set("element3Mod")
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Slice index: %d, Value: %s\n", index, elementValue)
+		return nil
+	}
+
+	expectedMap := map[string]map[string]string{
+		"key1": {"subKey1": "newValue1"},
+		"key2": {"subKey2": "value2"},
+	}
+
+	mapHandlerString := func(mapVal any, key any, value string,
+		set datautil.SetValueFuncString) error {
+		if value == "value1" {
+			// Set a new value for the key in the map.
+			err := set("newValue1")
+			if err != nil {
+				return err
+			}
+		}
+		t.Logf("Map key: %v, Value: %s\n", key, value)
+		return nil
+	}
+
+	// Create a new Walker instance.
+	walker := datautil.NewWalker().
+		WithStructHandlerString(structHandler).
+		WithSliceHandlerString(sliceHandler).
+		WithMapHandlerString(mapHandlerString)
+
+	var map1 any = map[string]map[string]string{
+		"key1": {"subKey1": "value1"},
+		"key2": {"subKey2": "value2"},
+	}
+
+	err := walker.Walk(&map1)
+	if err != nil {
+		t.Errorf("Error walking map: %v", err)
+	}
+
+	assert.Equal(t, expectedMap, map1,
+		"The map should have been modified correctly.")
+	t.Logf("Modified map: %+v\n", map1)
+
+	var slice1 any = [][]string{{"element1", "element2", "element3"}}
+	expectedSlice := [][]string{{"element1", "element2", "element3Mod"}}
+	err = walker.Walk(&slice1)
+	if err != nil {
+		t.Errorf("Error walking slice: %v", err)
+	}
+
+	assert.Equal(t, expectedSlice, slice1,
+		"The slice should have been modified correctly.")
+	t.Logf("Modified slice: %+v\n", slice1)
+
+	type myStruct2 struct {
+		Field1 string
+		Field2 string
+	}
+
+	type myStruct struct {
+		Field1 string
+		Field2 *myStruct2
+	}
+
+	var expectedStruct any = myStruct{
+		Field1: "structValue1",
+		Field2: &myStruct2{
+			Field1: "structValue1",
+			Field2: "structValue2Mod",
+		},
+	}
+
+	struct1 := myStruct{
+		Field1: "structValue1",
+		Field2: &myStruct2{
+			Field1: "structValue1",
+			Field2: "structValue2",
+		},
+	}
+
+	err = walker.Walk(&struct1)
+	if err != nil {
+		t.Errorf("Error walking struct: %v", err)
+	}
+
+	assert.Equal(t, expectedStruct, struct1,
+		"The struct should have been modified correctly.")
+	t.Logf("Modified struct: %+v\n", struct1)
+
+	type myStruct3 struct {
+		Field1 string
+		Field2 myStruct2
+	}
+
+	expectedMapOfStructs := map[string]*myStruct3{
+		"key1": {
+			Field1: "structValue1",
+			Field2: myStruct2{
+				Field1: "structValue1",
+				Field2: "structValue2Mod",
+			},
+		},
+		"key2": {
+			Field1: "structValue1",
+			Field2: myStruct2{
+				Field1: "structValue1",
+				Field2: "structValue3",
+			},
+		},
+	}
+	mapOfStructs := map[string]*myStruct3{
+		"key1": {
+			Field1: "structValue1",
+			Field2: myStruct2{
+				Field1: "structValue1",
+				Field2: "structValue2",
+			},
+		},
+		"key2": {
+			Field1: "structValue1",
+			Field2: myStruct2{
+				Field1: "structValue1",
+				Field2: "structValue3",
+			},
+		},
+	}
+
+	err = walker.Walk(&mapOfStructs)
+	if err != nil {
+		t.Errorf("Error walking map of structs: %v", err)
+	}
+
+	assert.Equal(t, expectedMapOfStructs, mapOfStructs,
+		"The map of structs should have been modified correctly.")
+	t.Logf("Modified map of structs: %+v\n", mapOfStructs)
+}
+
+func TestWalkerStringNonPointers(t *testing.T) {
+	structHandler := func(structVal any, fieldName string, fieldValue string,
+		set datautil.SetValueFuncString) error {
+		if fieldValue == "structValue2" {
+			// Set a new value for the field in the struct.
+			err := set("structValue2Mod")
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Struct field: %s, Value: %s\n", fieldName, fieldValue)
+		return nil
+	}
+
+	sliceHandler := func(sliceVal any, index int, elementValue string,
+		set datautil.SetValueFuncString) error {
+		if elementValue == "element3" {
+			// Set a new value for the element in the slice.
+			err := set("element3Mod")
+			if err != nil {
+				return err
+			}
+		}
+		fmt.Printf("Slice index: %d, Value: %s\n", index, elementValue)
+		return nil
+	}
+
+	expectedMap := map[string]map[string]string{
+		"key1": {"subKey1": "newValue1"},
+		"key2": {"subKey2": "value2"},
+	}
+
+	mapHandlerString := func(mapVal any, key any, value string,
+		set datautil.SetValueFuncString) error {
+		if value == "value1" {
+			// Set a new value for the key in the map.
+			err := set("newValue1")
+			if err != nil {
+				return err
+			}
+		}
+		t.Logf("Map key: %v, Value: %s\n", key, value)
+		return nil
+	}
+
+	// Create a new Walker instance.
+	walker := datautil.NewWalker().
+		WithStructHandlerString(structHandler).
+		WithSliceHandlerString(sliceHandler).
+		WithMapHandlerString(mapHandlerString)
+
+	var map1 any = map[string]map[string]string{
+		"key1": {"subKey1": "value1"},
+		"key2": {"subKey2": "value2"},
+	}
+
+	err := walker.Walk(&map1)
+	if err != nil {
+		t.Errorf("Error walking map: %v", err)
+	}
+
+	assert.Equal(t, expectedMap, map1,
+		"The map should have been modified correctly.")
+	t.Logf("Modified map: %+v\n", map1)
+
+	var slice1 any = [][]string{{"element1", "element2", "element3"}}
+	expectedSlice := [][]string{{"element1", "element2", "element3Mod"}}
+	err = walker.Walk(&slice1)
+	if err != nil {
+		t.Errorf("Error walking slice: %v", err)
+	}
+
+	assert.Equal(t, expectedSlice, slice1,
+		"The slice should have been modified correctly.")
+	t.Logf("Modified slice: %+v\n", slice1)
+
+	type myStruct2 struct {
+		Field1 string
+		Field2 string
+	}
+
+	type myStruct struct {
+		Field1 string
+		Field2 myStruct2
+	}
+
+	var expectedStruct any = myStruct{
+		Field1: "structValue1",
+		Field2: myStruct2{
+			Field1: "structValue1",
+			Field2: "structValue2Mod",
+		},
+	}
+
+	struct1 := myStruct{
+		Field1: "structValue1",
+		Field2: myStruct2{
+			Field1: "structValue1",
+			Field2: "structValue2",
+		},
+	}
+
+	err = walker.Walk(&struct1)
+	if err != nil {
+		t.Errorf("Error walking struct: %v", err)
+	}
+
+	assert.Equal(t, expectedStruct, struct1,
+		"The struct should have been modified correctly.")
+	t.Logf("Modified struct: %+v\n", struct1)
+}
+
 func ExampleWalker_Walk_trivial() {
 	sliceHandler := func(sliceVal any, index int, elementValue string,
 		set datautil.SetValueFuncString) error {
