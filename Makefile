@@ -27,7 +27,7 @@ builddoc: README.md
 	echo "<!-- gomarkdoc:embed:end -->" >> README.md
 	~/sand/prettier/node_modules/.bin/prettier --write README.md
 
-.PHONY: help
+.PHONY: help test
 
 # Print help message.
 help:

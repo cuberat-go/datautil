@@ -33,29 +33,29 @@ import "github.com/cuberat-go/datautil"
 
 <a name="MapWalkerHandler"></a>
 
-## type [MapWalkerHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L30-L31)
+## type [MapWalkerHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L33-L34)
 
 Function type for handling map traversal. The handler will be called for each key\-value pair in the map. Use the set\(\) function to modify the value in the map if so desired.
 
 ```go
-type MapWalkerHandler func(mapVal any, key any, value any,
+type MapWalkerHandler func(jsonPath string, mapVal any, key any, value any,
     set SetValueFunc) error
 ```
 
 <a name="MapWalkerHandlerString"></a>
 
-## type [MapWalkerHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L57-L58)
+## type [MapWalkerHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L60-L61)
 
 Function type for handling map traversal with string values. The handler will be called for each key\-value pair in the map whose value is a string. Use the set\(\) function to modify the value in the map if so desired. As a special case, if the map value is a pointer to a string, the handler will be called with the dereferenced string value, and the set\(\) function will modify the value in the map by setting the pointer to a new string value.
 
 ```go
-type MapWalkerHandlerString func(mapVal any, key any, value string,
-    set SetValueFuncString) error
+type MapWalkerHandlerString func(jsonPath string, mapVal any, key any,
+    value string, set SetValueFuncString) error
 ```
 
 <a name="SetValueFunc"></a>
 
-## type [SetValueFunc](https://github.com/cuberat-go/datautil/blob/main/walker.go#L11)
+## type [SetValueFunc](https://github.com/cuberat-go/datautil/blob/main/walker.go#L14)
 
 Function type for setting a value in a data structure. The function takes a value of any type and returns an error if the operation fails.
 
@@ -65,7 +65,7 @@ type SetValueFunc func(value any) error
 
 <a name="SetValueFuncString"></a>
 
-## type [SetValueFuncString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L15)
+## type [SetValueFuncString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L18)
 
 Function type for setting a string value in a data structure. The function takes a string value and returns an error if the operation fails.
 
@@ -75,51 +75,51 @@ type SetValueFuncString func(value string) error
 
 <a name="SliceWalkerHandler"></a>
 
-## type [SliceWalkerHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L24-L25)
+## type [SliceWalkerHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L27-L28)
 
 Function type for handling slice traversal. The handler will be called for each element in the slice. Use the set\(\) function to modify the value in the slice if so desired.
 
 ```go
-type SliceWalkerHandler func(sliceVal any, index int, elementValue any,
-    set SetValueFunc) error
+type SliceWalkerHandler func(jsonPath string,
+    sliceVal any, index int, elementValue any, set SetValueFunc) error
 ```
 
 <a name="SliceWalkerHandlerString"></a>
 
-## type [SliceWalkerHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L48-L49)
+## type [SliceWalkerHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L51-L52)
 
 Function type for handling slice traversal with string values. The handler will be called for each element in the slice whose value is a string. Use the set\(\) function to modify the value in the slice if so desired. As a special case, if the slice element is a pointer to a string, the handler will be called with the dereferenced string value, and the set\(\) function will modify the value in the slice by setting the pointer to a new string value.
 
 ```go
-type SliceWalkerHandlerString func(sliceVal any, index int,
+type SliceWalkerHandlerString func(jsonPath string, sliceVal any, index int,
     elementValue string, set SetValueFuncString) error
 ```
 
 <a name="StructWalkerHandler"></a>
 
-## type [StructWalkerHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L18-L19)
+## type [StructWalkerHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L21-L22)
 
 Function type for handling struct traversal.
 
 ```go
-type StructWalkerHandler func(structVal any, fieldName string,
+type StructWalkerHandler func(jsonPath string, structVal any, fieldName string,
     fieldValue any, set SetValueFunc) error
 ```
 
 <a name="StructWalkerHandlerString"></a>
 
-## type [StructWalkerHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L39-L40)
+## type [StructWalkerHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L42-L43)
 
 Function type for handling struct traversal with string values. The handler will be called for each field in the struct whose value is a string. Use the set\(\) function to modify the value in the struct if so desired. As a special case, if the field value is a pointer to a string, the handler will be called with the dereferenced string value, and the set\(\) function will modify the value in the struct by setting the pointer to a new string value.
 
 ```go
-type StructWalkerHandlerString func(structVal any, fieldName string,
-    fieldValue string, set SetValueFuncString) error
+type StructWalkerHandlerString func(jsonPath string, structVal any,
+    fieldName string, fieldValue string, set SetValueFuncString) error
 ```
 
 <a name="Walker"></a>
 
-## type [Walker](https://github.com/cuberat-go/datautil/blob/main/walker.go#L62-L69)
+## type [Walker](https://github.com/cuberat-go/datautil/blob/main/walker.go#L65-L75)
 
 Structure representing a walker that traverses data structures and invokes handlers for structs, slices, and maps.
 
@@ -131,7 +131,7 @@ type Walker struct {
 
 <a name="NewWalker"></a>
 
-### func [NewWalker](https://github.com/cuberat-go/datautil/blob/main/walker.go#L72)
+### func [NewWalker](https://github.com/cuberat-go/datautil/blob/main/walker.go#L78)
 
 ```go
 func NewWalker() *Walker
@@ -141,7 +141,7 @@ Creates a new instance of Walker.
 
 <a name="Walker.Walk"></a>
 
-### func \(\*Walker\) [Walk](https://github.com/cuberat-go/datautil/blob/main/walker.go#L125)
+### func \(\*Walker\) [Walk](https://github.com/cuberat-go/datautil/blob/main/walker.go#L147)
 
 ```go
 func (w *Walker) Walk(data any) error
@@ -149,55 +149,9 @@ func (w *Walker) Walk(data any) error
 
 Traverses the provided data structure, invoking the appropriate handlers for structs, slices, and maps.
 
-<details><summary>Example (Trivial)</summary>
-<p>
-
-```go
-package main
-
-import (
-	"fmt"
-
-	"github.com/cuberat-go/datautil"
-)
-
-func main() {
-	sliceHandler := func(sliceVal any, index int, elementValue string,
-		set datautil.SetValueFuncString) error {
-		if elementValue == "element3" {
-			// Set a new value for the element in the slice.
-			err := set("element3Mod")
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
-	// Create a new Walker instance.
-	walker := datautil.NewWalker().
-		WithSliceHandlerString(sliceHandler)
-	slice := []string{"element1", "element2", "element3"}
-	err := walker.Walk(&slice)
-	if err != nil {
-		fmt.Printf("Error walking slice: %v", err)
-	}
-	fmt.Printf("Modified slice: %+v\n", slice)
-}
-```
-
-#### Output
-
-```
-Modified slice: [element1 element2 element3Mod]
-```
-
-</p>
-</details>
-
 <a name="Walker.WithMapHandler"></a>
 
-### func \(\*Walker\) [WithMapHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L109)
+### func \(\*Walker\) [WithMapHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L131)
 
 ```go
 func (w *Walker) WithMapHandler(handler MapWalkerHandler) *Walker
@@ -207,7 +161,7 @@ Sets the handler for map traversal and returns the Walker instance.
 
 <a name="Walker.WithMapHandlerString"></a>
 
-### func \(\*Walker\) [WithMapHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L116-L118)
+### func \(\*Walker\) [WithMapHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L138-L140)
 
 ```go
 func (w *Walker) WithMapHandlerString(handler MapWalkerHandlerString) *Walker
@@ -217,7 +171,7 @@ Sets the handler for map traversal with string values and returns the Walker ins
 
 <a name="Walker.WithSliceHandler"></a>
 
-### func \(\*Walker\) [WithSliceHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L93)
+### func \(\*Walker\) [WithSliceHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L115)
 
 ```go
 func (w *Walker) WithSliceHandler(handler SliceWalkerHandler) *Walker
@@ -227,7 +181,7 @@ Sets the handler for slice traversal and returns the Walker instance.
 
 <a name="Walker.WithSliceHandlerString"></a>
 
-### func \(\*Walker\) [WithSliceHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L101-L103)
+### func \(\*Walker\) [WithSliceHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L123-L125)
 
 ```go
 func (w *Walker) WithSliceHandlerString(handler SliceWalkerHandlerString) *Walker
@@ -237,7 +191,7 @@ Sets the handler for slice traversal with string values and returns the Walker i
 
 <a name="Walker.WithStructHandler"></a>
 
-### func \(\*Walker\) [WithStructHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L77)
+### func \(\*Walker\) [WithStructHandler](https://github.com/cuberat-go/datautil/blob/main/walker.go#L99)
 
 ```go
 func (w *Walker) WithStructHandler(handler StructWalkerHandler) *Walker
@@ -247,7 +201,7 @@ Sets the handler for struct traversal and returns the Walker instance.
 
 <a name="Walker.WithStructHandlerString"></a>
 
-### func \(\*Walker\) [WithStructHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L85-L87)
+### func \(\*Walker\) [WithStructHandlerString](https://github.com/cuberat-go/datautil/blob/main/walker.go#L107-L109)
 
 ```go
 func (w *Walker) WithStructHandlerString(handler StructWalkerHandlerString) *Walker
