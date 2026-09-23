@@ -20,6 +20,7 @@ import "github.com/cuberat-go/datautil"
   - [func NewPrefixFramedMarshaler\(\) \*PrefixFramedMarshaler](#NewPrefixFramedMarshaler)
   - [func \(pfm \*PrefixFramedMarshaler\) Marshal\(data any\) \(\[\]byte, error\)](#PrefixFramedMarshaler.Marshal)
   - [func \(pfm \*PrefixFramedMarshaler\) MarshalTo\(data any, w io.Writer\) error](#PrefixFramedMarshaler.MarshalTo)
+  - [func \(pfm \*PrefixFramedMarshaler\) SeqFrom\[T any\]\(template T, r io.Reader\) iter.Seq2\[T, error\]](#PrefixFramedMarshaler.SeqFrom)
   - [func \(pfm \*PrefixFramedMarshaler\) Unmarshal\(data \[\]byte, val any\) error](#PrefixFramedMarshaler.Unmarshal)
   - [func \(pfm \*PrefixFramedMarshaler\) UnmarshalFrom\(r io.Reader, val any\) error](#PrefixFramedMarshaler.UnmarshalFrom)
 - [type SetValueFunc](#SetValueFunc)
@@ -66,11 +67,51 @@ type MapWalkerHandlerString func(jsonPath string, mapVal any, key any,
 
 <a name="PrefixFramedMarshaler"></a>
 
-## type [PrefixFramedMarshaler](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L18-L20)
+## type [PrefixFramedMarshaler](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L91-L93)
 
-Object structure for prefix\-framed marshaling of data.
+Struct field tags can be used to customize the marshaling behavior of individual fields. Use \`datautilpfm\` as the key, e.g.,
 
-Datatypes are marshaled into bytes according to their kind, with support for structs, maps, slices, arrays, booleans, integers, unsigned integers, floats, strings, and complex numbers. Custom types implementing the encoding.BinaryMarshaler and encoding.BinaryUnmarshaler interfaces are also supported.
+```
+type MyStruct struct {
+    A uint64 `datautilpfm:"varint"`
+}
+```
+
+Valid values for the \`datautilpfm\` tag: \- "varint": Indicates that an unsigned integer \(uint, uint8,uint16, uint32, uint64\) field should be marshaled using varint encoding.
+
+\#\#\# Maps
+
+A map value is marshaled by prefixing the length of its byte representation, followed by the serialized key\-value pairs. The order of key\-value pairs when serialized depends on the underlying map implementation.
+
+\#\#\# Slices and Arrays
+
+A slice or array value is marshaled by prefixing the length of its byte representation, followed by the serialized elements in order. \#\#\# Booleans
+
+A boolean value is marshaled by prefixing the length of its byte representation, followed by a single byte representing the boolean value \(0 for false, 1 for true\).
+
+\#\#\# Integers
+
+An integer value is marshaled by prefixing the length of its byte representation, followed by the serialized integer in big\-endian order.
+
+\#\#\# Unsigned Integers
+
+An unsigned integer value is marshaled by prefixing the length of its byte representation, followed by the serialized unsigned integer in big\-endian order.
+
+\#\#\# Floats
+
+A float value is marshaled by prefixing the length of its byte representation, followed by the serialized float in big\-endian order.
+
+\#\#\# Strings
+
+A string value is marshaled by prefixing the length of its byte representation, followed by the serialized string bytes.
+
+\#\#\# Complex Numbers
+
+A complex number value is marshaled by prefixing the length of its byte representation, followed by the serialized real and imaginary parts in big\-endian order.
+
+\#\#\# BinaryMarshaler
+
+A value implementing the BinaryMarshaler interface is marshaled by prefixing the length of its byte representation, followed by the serialized bytes returned by the MarshalBinary method.
 
 ```go
 type PrefixFramedMarshaler struct {
@@ -80,7 +121,7 @@ type PrefixFramedMarshaler struct {
 
 <a name="NewPrefixFramedMarshaler"></a>
 
-### func [NewPrefixFramedMarshaler](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L23)
+### func [NewPrefixFramedMarshaler](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L96)
 
 ```go
 func NewPrefixFramedMarshaler() *PrefixFramedMarshaler
@@ -90,43 +131,53 @@ Returns a new prefix\-framed data marshaler.
 
 <a name="PrefixFramedMarshaler.Marshal"></a>
 
-### func \(\*PrefixFramedMarshaler\) [Marshal](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L37)
+### func \(\*PrefixFramedMarshaler\) [Marshal](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L110)
 
 ```go
 func (pfm *PrefixFramedMarshaler) Marshal(data any) ([]byte, error)
 ```
 
-Marshals the provided data and returns the resulting byte slice using prefix\-framed encoding.
+Marshals the provided data and returns the resulting byte slice using length\-prefix framing.
 
 <a name="PrefixFramedMarshaler.MarshalTo"></a>
 
-### func \(\*PrefixFramedMarshaler\) [MarshalTo](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L31)
+### func \(\*PrefixFramedMarshaler\) [MarshalTo](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L104)
 
 ```go
 func (pfm *PrefixFramedMarshaler) MarshalTo(data any, w io.Writer) error
 ```
 
-Marshals the provided data to the provided writer using prefix\-framed encoding.
+Marshals the provided data to the provided writer using length\-prefix framed encoding.
+
+<a name="PrefixFramedMarshaler.SeqFrom"></a>
+
+### func \(\*PrefixFramedMarshaler\) [SeqFrom](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L133-L136)
+
+```go
+func (pfm *PrefixFramedMarshaler) SeqFrom[T any](template T, r io.Reader) iter.Seq2[T, error]
+```
+
+Returns a sequence iterator for reading multiple values of the specified type from the provided reader using length\-prefix framing.
 
 <a name="PrefixFramedMarshaler.Unmarshal"></a>
 
-### func \(\*PrefixFramedMarshaler\) [Unmarshal](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L52-L55)
+### func \(\*PrefixFramedMarshaler\) [Unmarshal](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L125-L128)
 
 ```go
 func (pfm *PrefixFramedMarshaler) Unmarshal(data []byte, val any) error
 ```
 
-Unmarshals data from the provided byte slice into the given value using prefix\-framed encoding.
+Unmarshals data from the provided byte slice into the given value using length\-prefix framing.
 
 <a name="PrefixFramedMarshaler.UnmarshalFrom"></a>
 
-### func \(\*PrefixFramedMarshaler\) [UnmarshalFrom](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L43-L46)
+### func \(\*PrefixFramedMarshaler\) [UnmarshalFrom](https://github.com/cuberat-go/datautil/blob/main/marshaler.go#L116-L119)
 
 ```go
 func (pfm *PrefixFramedMarshaler) UnmarshalFrom(r io.Reader, val any) error
 ```
 
-Unmarshals data from the provided reader into the given value using prefix\-framed encoding.
+Unmarshals data from the provided reader into the given value using length\-prefix framing.
 
 <a name="SetValueFunc"></a>
 

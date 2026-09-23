@@ -2,6 +2,7 @@ package datautil_test
 
 import (
 	// Built-in/core modules.
+	"bytes"
 	"fmt"
 	"testing"
 
@@ -754,6 +755,215 @@ func TestStructWithCustomMarshalerFields(t *testing.T) {
 	if !assert.NoError(t, err) {
 		t.FailNow()
 	}
+	if !assert.Equal(t, data, newData) {
+		t.FailNow()
+	}
+}
+
+func TestIteratorWithStructPointers(t *testing.T) {
+	type InnerStruct struct {
+		Num1   int
+		Num2   int
+		Float1 float64
+	}
+
+	type MyStruct struct {
+		A *InnerStruct
+		B *InnerStruct
+	}
+
+	data := []*MyStruct{
+		{
+			A: &InnerStruct{
+				Num1:   1,
+				Num2:   2,
+				Float1: 1.1,
+			},
+			B: &InnerStruct{
+				Num1:   3,
+				Num2:   4,
+				Float1: 2.2,
+			},
+		},
+		{
+			A: &InnerStruct{
+				Num1:   5,
+				Num2:   6,
+				Float1: 3.3,
+			},
+			B: &InnerStruct{
+				Num1:   7,
+				Num2:   8,
+				Float1: 4.4,
+			},
+		},
+	}
+
+	pfm := datautil.NewPrefixFramedMarshaler()
+
+	outBytes := &bytes.Buffer{}
+
+	for _, item := range data {
+		err := pfm.MarshalTo(item, outBytes)
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+	}
+
+	template := &MyStruct{}
+
+	i := 0
+	for item, err := range pfm.SeqFrom(template, outBytes) {
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+		if !assert.Equal(t, data[i], item) {
+			t.FailNow()
+		}
+		i++
+	}
+}
+
+func TestIteratorWithStructs(t *testing.T) {
+	type InnerStruct struct {
+		Num1   int
+		Num2   int
+		Float1 float64
+	}
+
+	data := []InnerStruct{
+		{
+			Num1:   1,
+			Num2:   2,
+			Float1: 1.1,
+		},
+		{
+			Num1:   1,
+			Num2:   2,
+			Float1: 1.1,
+		},
+		{
+			Num1:   3,
+			Num2:   4,
+			Float1: 2.2,
+		},
+		{
+			Num1:   5,
+			Num2:   6,
+			Float1: 3.3,
+		},
+		{
+			Num1:   7,
+			Num2:   8,
+			Float1: 4.4,
+		},
+	}
+
+	pfm := datautil.NewPrefixFramedMarshaler()
+
+	outBytes := &bytes.Buffer{}
+
+	for _, item := range data {
+		err := pfm.MarshalTo(item, outBytes)
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+	}
+
+	template := InnerStruct{}
+
+	i := 0
+	for item, err := range pfm.SeqFrom(template, outBytes) {
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+		if !assert.Equal(t, data[i], item) {
+			t.FailNow()
+		}
+		i++
+	}
+}
+
+func TestIteratorWithInt32(t *testing.T) {
+
+	data := []int32{1, 2, 3, 4, 5}
+
+	pfm := datautil.NewPrefixFramedMarshaler()
+
+	outBytes := &bytes.Buffer{}
+
+	for _, item := range data {
+		err := pfm.MarshalTo(item, outBytes)
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+	}
+
+	template := int32(0)
+
+	i := 0
+	for item, err := range pfm.SeqFrom(template, outBytes) {
+		if !assert.NoError(t, err) {
+			t.FailNow()
+		}
+		if !assert.Equal(t, data[i], item) {
+			t.FailNow()
+		}
+		i++
+	}
+}
+
+func TestStructChange(t *testing.T) {
+	type MyStruct struct {
+		A int64
+		B int64
+	}
+
+	type MyUpdatedStruct struct {
+		A int64
+		B int64
+		C int64
+	}
+
+	data := MyStruct{A: 42, B: -42}
+	expected := MyUpdatedStruct{A: 42, B: -42}
+
+	pfm := datautil.NewPrefixFramedMarshaler()
+	wireData, err := pfm.Marshal(data)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+
+	newData := MyUpdatedStruct{}
+	err = pfm.Unmarshal(wireData, &newData)
+	assert.NoError(t, err)
+	if !assert.Equal(t, expected, newData) {
+		t.FailNow()
+	}
+}
+
+func TestVarintUint64(t *testing.T) {
+	type MyStruct struct {
+		A uint64 `datautilpfm:"varint"`
+	}
+
+	data := MyStruct{A: 42}
+	expectedWireData := []byte{2, 1, 42}
+
+	pfm := datautil.NewPrefixFramedMarshaler()
+	wireData, err := pfm.Marshal(data)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+
+	t.Logf("wireData: %v", wireData)
+	if !assert.Equal(t, expectedWireData, wireData) {
+		t.FailNow()
+	}
+
+	newData := MyStruct{}
+	err = pfm.Unmarshal(wireData, &newData)
+	assert.NoError(t, err)
 	if !assert.Equal(t, data, newData) {
 		t.FailNow()
 	}

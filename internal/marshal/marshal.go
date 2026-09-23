@@ -8,8 +8,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"reflect"
+	"strings"
 )
 
 var ErrInvalidData = fmt.Errorf("invalid data")
@@ -21,8 +23,30 @@ type Reader interface {
 	io.ByteReader
 }
 
+type ByteReader struct {
+	r io.Reader
+}
+
+func NewByteReader(r io.Reader) *ByteReader {
+	return &ByteReader{r: r}
+}
+
+func (br *ByteReader) Read(p []byte) (int, error) {
+	return br.r.Read(p)
+}
+
+func (br *ByteReader) ReadByte() (byte, error) {
+	var buf [1]byte
+	_, err := br.r.Read(buf[:])
+	if err != nil {
+		return 0, err
+	}
+	return buf[0], nil
+}
+
 type fieldConf struct {
-	Kind reflect.Kind
+	Kind       reflect.Kind
+	UseVarints bool
 }
 
 // Object structure for prefix-framed marshaling of data.
@@ -38,14 +62,14 @@ type PrefixFramedMarshaler struct {
 // Marshals the given data into the provided writer using prefix-framed
 // encoding.
 func (pfm *PrefixFramedMarshaler) MarshalTo(data any, w io.Writer) error {
-	return pfm.marshalTo(reflect.ValueOf(data), w)
+	return pfm.marshalTo(fieldConf{}, reflect.ValueOf(data), w)
 }
 
 // Marshals the given data and returns the resulting byte slice using
 // prefix-framed encoding.
 func (pfm *PrefixFramedMarshaler) Marshal(data any) ([]byte, error) {
 	w := &bytes.Buffer{}
-	err := pfm.marshalTo(reflect.ValueOf(data), w)
+	err := pfm.marshalTo(fieldConf{}, reflect.ValueOf(data), w)
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +85,9 @@ func (pfm *PrefixFramedMarshaler) UnmarshalFrom(
 	var mr Reader
 	var ok bool
 	if mr, ok = r.(Reader); !ok {
-		mr = bufio.NewReader(r)
+		mr = NewByteReader(r)
 	}
-	err := pfm.unmarshalFrom(mr, reflect.ValueOf(val))
+	err := pfm.unmarshalFrom(fieldConf{}, mr, reflect.ValueOf(val))
 	if err == ErrNullValue {
 		return nil
 	}
@@ -76,11 +100,73 @@ func (pfm *PrefixFramedMarshaler) Unmarshal(
 	data []byte,
 	val any,
 ) error {
-	err := pfm.unmarshalFrom(bytes.NewReader(data), reflect.ValueOf(val))
+	err := pfm.unmarshalFrom(fieldConf{}, bytes.NewReader(data), reflect.ValueOf(val))
 	if err == ErrNullValue {
 		return nil
 	}
 	return err
+}
+
+// Returns an iterator over a sequence of values read from the provided reader
+// using prefix-framed encoding. The `template` parameter is used to create new
+// instances. E.g., if it's a pointer to a struct, new instances will also be
+// pointers to structs. If it's an integer or other basic type, new instances
+// will be of the same type. For example:
+//
+//	template := int32(0)
+//	for item, err := range pfm.SeqFrom(template, outBytes) {
+//	    // item is an int32 value.
+//	}
+func (pfm *PrefixFramedMarshaler) SeqFrom[T any](
+	template T,
+	r io.Reader,
+) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		var mr Reader
+		var ok bool
+		if mr, ok = r.(Reader); !ok {
+			mr = NewByteReader(r)
+		}
+		templateValue := reflect.ValueOf(template)
+		isPointer := templateValue.Kind() == reflect.Pointer
+
+		for {
+			val := pfm.createPointerFromTemplate(templateValue)
+			err := pfm.unmarshalFrom(fieldConf{}, mr, val)
+			if err == ErrNullValue {
+				val.SetZero()
+				if !yield(val.Interface().(T), nil) {
+					return
+				}
+				continue
+			}
+			if err == io.EOF {
+				return
+			}
+			if !isPointer {
+				val = val.Elem()
+			}
+			if err != nil {
+				if !yield(val.Interface().(T), err) {
+					return
+				}
+				continue
+			}
+			if !yield(val.Interface().(T), err) {
+				return
+			}
+		}
+	}
+}
+
+func (pfm *PrefixFramedMarshaler) createPointerFromTemplate(
+	template reflect.Value,
+) reflect.Value {
+	if template.Kind() != reflect.Pointer {
+		return reflect.New(template.Type())
+	}
+
+	return reflect.New(template.Type().Elem())
 }
 
 func (pfm *PrefixFramedMarshaler) marshalCustomValueTo(
@@ -112,6 +198,7 @@ func (pfm *PrefixFramedMarshaler) unmarshalCustomValueFrom(
 }
 
 func (pfm *PrefixFramedMarshaler) marshalTo(
+	conf fieldConf,
 	val reflect.Value,
 	w io.Writer,
 ) error {
@@ -119,8 +206,8 @@ func (pfm *PrefixFramedMarshaler) marshalTo(
 		return ErrInvalidData
 	}
 
-	conf := fieldConf{
-		Kind: val.Kind(),
+	if conf.Kind == reflect.Invalid {
+		conf.Kind = val.Kind()
 	}
 
 	if mType, ok := val.Interface().(encoding.BinaryMarshaler); ok {
@@ -166,6 +253,7 @@ func (pfm *PrefixFramedMarshaler) marshalTo(
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalFrom(
+	conf fieldConf,
 	r Reader,
 	val reflect.Value,
 ) error {
@@ -197,9 +285,7 @@ func (pfm *PrefixFramedMarshaler) unmarshalFrom(
 			ErrInvalidData)
 	}
 
-	conf := fieldConf{
-		Kind: kind,
-	}
+	conf.Kind = kind
 
 	kind = val.Kind()
 	switch kind {
@@ -290,11 +376,11 @@ func (pfm *PrefixFramedMarshaler) marshalMapValueTo(
 	mapOut := &bytes.Buffer{}
 	iter := value.MapRange()
 	for iter.Next() {
-		err := pfm.marshalTo(iter.Key(), mapOut)
+		err := pfm.marshalTo(conf, iter.Key(), mapOut)
 		if err != nil {
 			return err
 		}
-		err = pfm.marshalTo(iter.Value(), mapOut)
+		err = pfm.marshalTo(conf, iter.Value(), mapOut)
 		if err != nil {
 			return err
 		}
@@ -322,14 +408,16 @@ func (pfm *PrefixFramedMarshaler) unmarshalMapValueFrom(
 
 	limitedReader := bufio.NewReader(io.LimitReader(r, int64(size)))
 
+	conf := fieldConf{}
+
 	for err == nil {
 		keyPtr := reflect.New(keyType)
-		err = pfm.unmarshalFrom(limitedReader, keyPtr)
+		err = pfm.unmarshalFrom(conf, limitedReader, keyPtr)
 		if err != nil {
 			break
 		}
 		valPtr := reflect.New(valType)
-		err = pfm.unmarshalFrom(limitedReader, valPtr)
+		err = pfm.unmarshalFrom(conf, limitedReader, valPtr)
 		if err != nil {
 			break
 		}
@@ -355,13 +443,62 @@ func (pfm *PrefixFramedMarshaler) marshalStructValueTo(
 		if !field.IsExported() {
 			continue
 		}
-		err := pfm.marshalTo(value, b)
+		fieldConf := pfm.buildStructFieldConf(conf, field, value)
+		err := pfm.marshalTo(fieldConf, value, b)
 		if err != nil {
 			return err
 		}
 	}
 
 	return pfm.marshalByteFieldTo(conf, b.Bytes(), w)
+}
+
+func (pfm *PrefixFramedMarshaler) buildStructFieldConf(
+	conf fieldConf,
+	field reflect.StructField,
+	value reflect.Value,
+) fieldConf {
+	for value.Kind() == reflect.Pointer && !value.IsNil() {
+		value = value.Elem()
+	}
+	conf.Kind = value.Kind()
+
+	switch value.Kind() {
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		fallthrough
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		tagInfo := pfm.parseTag(field)
+		conf.UseVarints = tagInfo.UseVarInts()
+	}
+	return conf
+}
+
+// Map of info extracted from struct field tags with the `datautilpfm` key.
+type TagInfo struct {
+	Info map[string]string
+}
+
+func (pfm *PrefixFramedMarshaler) parseTag(
+	field reflect.StructField,
+) *TagInfo {
+	tag := field.Tag.Get("datautilpfm")
+	result := make(map[string]string)
+	if tag != "" {
+		for part := range strings.SplitSeq(tag, ",") {
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) == 2 {
+				result[kv[0]] = kv[1]
+			} else {
+				result[kv[0]] = ""
+			}
+		}
+	}
+	return &TagInfo{Info: result}
+}
+
+func (t *TagInfo) UseVarInts() bool {
+	_, ok := t.Info["varint"]
+	return ok
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalStructValueFrom(
@@ -384,19 +521,25 @@ func (pfm *PrefixFramedMarshaler) unmarshalStructValueFrom(
 
 	valType := value.Type()
 
+	conf := fieldConf{}
+
 	for i := 0; i < valType.NumField(); i++ {
 		typeField := valType.Field(i)
 		if !typeField.IsExported() {
 			continue
 		}
+		fieldConf := pfm.buildStructFieldConf(conf, typeField, value)
 		fieldType := typeField.Type
 
 		newValPtr := reflect.New(fieldType)
 		newValPtr = pfm.ensureValue(newValPtr)
-		err = pfm.unmarshalFrom(limitedReader, newValPtr)
+		err = pfm.unmarshalFrom(fieldConf, limitedReader, newValPtr)
 		if err == ErrNullValue {
 			value.Field(i).SetZero()
 			continue
+		}
+		if err == io.EOF {
+			break
 		}
 		if err != nil {
 			return err
@@ -430,7 +573,7 @@ func (pfm *PrefixFramedMarshaler) marshalSliceValueTo(
 	sliceOut := &bytes.Buffer{}
 	for i := 0; i < value.Len(); i++ {
 		elem := value.Index(i)
-		err := pfm.marshalTo(elem, sliceOut)
+		err := pfm.marshalTo(conf, elem, sliceOut)
 		if err != nil {
 			return err
 		}
@@ -461,9 +604,11 @@ func (pfm *PrefixFramedMarshaler) unmarshalSliceValueFrom(
 	}
 
 	limitedReader := bufio.NewReader(io.LimitReader(r, int64(size)))
+
+	conf := fieldConf{}
 	for i := 0; err == nil; i++ {
 		elem := reflect.New(elemType)
-		err = pfm.unmarshalFrom(limitedReader, elem)
+		err = pfm.unmarshalFrom(conf, limitedReader, elem)
 		if err == nil {
 			if value.Kind() == reflect.Array {
 				if i >= value.Len() {
@@ -530,15 +675,41 @@ func (pfm *PrefixFramedMarshaler) unmarshalByteFieldToBytes(
 	return data, nil
 }
 
+// Writes the size as a varint to the writer.
 func (pfm *PrefixFramedMarshaler) writeSize(size int, w io.Writer) error {
-	sizeBuf := make([]byte, binary.MaxVarintLen32)
-	sizeLen := binary.PutUvarint(sizeBuf, uint64(size))
-	_, err := w.Write(sizeBuf[:sizeLen])
+	if size < 0 {
+		return fmt.Errorf("size cannot be negative: %d", size)
+	}
+	return pfm.writeUVarint(uint64(size), w)
+}
+
+// Writes a uint64 to the writer as a varint.
+func (pfm *PrefixFramedMarshaler) writeUVarint(
+	value uint64,
+	w io.Writer,
+) error {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], value)
+	_, err := w.Write(buf[:n])
 	return err
 }
 
+// Returns the varint encoding of a uint64 as a byte slice.
+func (pfm *PrefixFramedMarshaler) getUVarintBytes(value uint64) []byte {
+	var buf [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(buf[:], value)
+	return buf[:n]
+}
+
+// Returns the varint encoding of an int64 as a byte slice.
+// func (pfm *PrefixFramedMarshaler) getVarintBytes(value int64) []byte {
+// 	var buf [binary.MaxVarintLen64]byte
+// 	n := binary.PutVarint(buf[:], int64(value))
+// 	return buf[:n]
+// }
+
 func (pfm *PrefixFramedMarshaler) marshalByteFieldTo(
-	conf fieldConf,
+	_ fieldConf,
 	data []byte,
 	w io.Writer,
 ) error {
@@ -561,10 +732,10 @@ func (pfm *PrefixFramedMarshaler) marshalUIntField(
 	value uint64,
 	w io.Writer,
 ) error {
-	// var err error
-	// fieldBuf := make([]byte, binary.MaxVarintLen64)
-	// fieldSize := binary.PutUvarint(fieldBuf, value)
-	// return pfm.marshalByteFieldTo(fieldBuf[:fieldSize], w)
+	if conf.UseVarints {
+		payLoad := pfm.getUVarintBytes(value)
+		return pfm.marshalByteFieldTo(conf, payLoad, w)
+	}
 
 	var fieldBuf []byte
 
@@ -629,7 +800,7 @@ func (pfm *PrefixFramedMarshaler) marshalComplexValueTo(
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalComplexValueFrom(
-	conf fieldConf,
+	_ fieldConf,
 	r Reader,
 	value reflect.Value,
 ) error {
@@ -661,7 +832,7 @@ func (pfm *PrefixFramedMarshaler) marshalFloatValueTo(
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalFloatValueFrom(
-	conf fieldConf,
+	_ fieldConf,
 	r Reader,
 	value reflect.Value,
 ) error {
@@ -693,7 +864,7 @@ func (pfm *PrefixFramedMarshaler) marshalBoolValueTo(
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalBoolValueFrom(
-	conf fieldConf,
+	_ fieldConf,
 	r Reader,
 	value reflect.Value,
 ) error {
@@ -711,7 +882,7 @@ func (pfm *PrefixFramedMarshaler) unmarshalBoolValueFrom(
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalStringValueFrom(
-	conf fieldConf,
+	_ fieldConf,
 	r Reader,
 	value reflect.Value,
 ) error {
@@ -735,6 +906,12 @@ func (pfm *PrefixFramedMarshaler) unmarshalUintValueFrom(
 		return err
 	}
 
+	if conf.UseVarints {
+		intVal, _ := binary.Uvarint(fieldData)
+		value.SetUint(intVal)
+		return nil
+	}
+
 	intVal := uint64(0)
 	switch len(fieldData) {
 	case 8:
@@ -749,15 +926,13 @@ func (pfm *PrefixFramedMarshaler) unmarshalUintValueFrom(
 		return fmt.Errorf("invalid uint field size")
 	}
 
-	// fieldValue, _ := binary.Uvarint(fieldData)
-	// value.SetUint(fieldValue)
 	value.SetUint(intVal)
 
 	return nil
 }
 
 func (pfm *PrefixFramedMarshaler) unmarshalIntValueFrom(
-	conf fieldConf,
+	_ fieldConf,
 	r Reader,
 	value reflect.Value,
 ) error {
